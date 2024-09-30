@@ -1,0 +1,12 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+.DS_Store
+scripts/00_renvSnapshot.R
+scripts/00_sessionInfo.R
+scripts/00_test.R
+scripts/00_clean.R
+scripts/.DS_Store
+extra/
+data/data_full.csv
