@@ -1,0 +1,493 @@
+---
+title: "Modeling - Acoustic Features"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE)
+```
+
+```{r load_library, message = FALSE}
+library(tidyverse)
+library(corrplot)
+library(MLmetrics)
+library(tidymodels)
+library(vip)
+```
+
+```{r load_data}
+## Load Data
+# this modeling file evaluates only acoustic features (no linguistic)
+df <- read.csv(here::here("data/data.csv"))
+
+# convert Condition to factor
+df$Condition <- factor(df$Condition)
+
+# subset into data frames (df) for analysis
+df_att_subj <- df %>% 
+  filter(Speaker == "Subject" & Condition %in% c("att_robot", "att_woz"))
+
+df_ji_subj <- df %>% 
+  filter(Speaker == "Subject" & Condition %in% c("ji_robot", "ji_woz"))
+
+# drop unused levels from df
+df_att_subj$Condition <- droplevels(df_att_subj$Condition)
+
+df_ji_subj$Condition <- droplevels(df_ji_subj$Condition)
+
+# create df for modeling
+df_log_att <- df_att_subj %>% 
+  select(Session, Condition, MeanF0, SDF0, MeanPower, SDPower) %>% 
+  na.omit()
+
+df_log_ji <- df_ji_subj %>% 
+  select(Session, Condition, MeanF0, SDF0, MeanPower, SDPower) %>% 
+  na.omit()
+```
+
+
+```{r train_test}
+## Train/Test Split
+# All set recipes for modeling. The entirety of the user's IPUs are in the training or test set (but not both).
+
+# get unique session ids
+sess_id_att <- unique(df_log_att$Session)
+sess_id_ji <- unique(df_log_ji$Session)
+
+# set seed for reproducibility
+set.seed(1234) 
+
+# shuffle session ids
+shuffled_sess_att <- sample(sess_id_att)
+shuffled_sess_ji <- sample(sess_id_ji)
+
+# determine floor split index
+split_index_att <- floor(0.8 * length(shuffled_sess_att))
+split_index_ji <- floor(0.8 * length(shuffled_sess_ji))
+
+# split sessions into training and test sets
+train_sess_att <- shuffled_sess_att[1:split_index_att]
+test_sess_att <- shuffled_sess_att[(split_index_att + 1):length(shuffled_sess_att)]
+
+train_sess_ji <- shuffled_sess_ji[1:split_index_ji]
+test_sess_ji <- shuffled_sess_ji[(split_index_ji + 1):length(shuffled_sess_ji)]
+
+# create training and test splits based so that each session is only found in the training or test split
+train_data_att <- df_log_att %>% filter(Session %in% train_sess_att)
+test_data_att <- df_log_att %>% filter(Session %in% test_sess_att)
+
+train_data_ji <- df_log_ji %>% filter(Session %in% train_sess_ji)
+test_data_ji <- df_log_ji %>% filter(Session %in% test_sess_ji)
+
+# drop session column from training and test data
+train_data_att <- train_data_att %>% select(-Session)
+test_data_att <- test_data_att %>% select(-Session)
+
+train_data_ji <- train_data_ji %>% select(-Session)
+test_data_ji <- test_data_ji %>% select(-Session)
+
+# create recipes for modeling
+recipe_att <- 
+  recipe(Condition ~ ., data = train_data_att)
+
+recipe_ji <- 
+  recipe(Condition ~ ., data = train_data_ji)
+```
+
+```{r att_corr_matrix, include = FALSE}
+## Correlation Matrix for Attentive Listening 
+# used for checking multicollinearity assumptions
+
+# drop session column
+df_log_att <- df_log_att %>% select(-Session)
+
+# Create a correlation matrix
+cor_matrix_att <- cor(na.omit(df_log_att[, setdiff(names(df_log_att), c("Condition"))]))
+
+# Save attentive listening correlation plot
+pdf(here::here("output/plots/correlation_plot_att_acoustic.pdf"), width = 15, height = 15)
+corrplot(cor_matrix_att, method = "number", type = "upper", t1.cex = 0.7, t1.srt = 45)
+dev.off()
+```
+
+```{r ji_corr_matrix, include = FALSE}
+## Correlation Matrix for Job Interview 
+# used for checking multicollinearity assumptions
+
+# drop session column
+df_log_ji <- df_log_ji %>% select(-Session)
+
+cor_matrix_ji <- cor(na.omit(df_log_ji[, setdiff(names(df_log_ji), c("Condition"))]))
+
+# Save job interview correlation plot
+pdf(here::here("output/plots/correlation_plot_ji_acoustic.pdf"), width = 15, height = 15)
+corrplot(cor_matrix_ji, method = "number", type = "upper", t1.cex = 0.7, t1.srt = 45)
+dev.off()
+```
+
+## Baseline (Majority Class)
+```{r baseline}
+set.seed(1234)
+# Predict the majority class for all instances in the test data
+baseline_predictions_att <- rep(names(table(train_data_att$Condition))[which.max(table(train_data_att$Condition))],
+                                nrow(test_data_att))
+
+baseline_predictions_ji <- rep(names(table(train_data_ji$Condition))[which.max(table(train_data_ji$Condition))],
+                               nrow(test_data_ji))
+
+# Print baseline performance metrics
+cat("Attentive Listening:\n")
+cat("Baseline Accuracy:", mean(baseline_predictions_att == test_data_att$Condition), "\n")
+cat("Baseline Precision:", sum(test_data_att$Condition == "att_woz") / nrow(test_data_att), "\n")
+cat("Baseline Recall:", 1, "\n")
+cat("Baseline F1 Score:", 2 * (sum(test_data_att$Condition == "att_woz") / nrow(test_data_att) * 1) / (sum(test_data_att$Condition == "att_woz") / nrow(test_data_att) + 1), "\n")
+
+cat("\nJob Interview:\n")
+cat("Baseline Accuracy:", mean(baseline_predictions_ji == test_data_ji$Condition), "\n")
+cat("Baseline Precision:", sum(test_data_ji$Condition == "ji_woz") / nrow(test_data_ji), "\n")
+cat("Baseline Recall:", 1, "\n")
+cat("Baseline F1 Score:", 2 * (sum(test_data_ji$Condition == "ji_woz") / nrow(test_data_ji) * 1) / (sum(test_data_ji$Condition == "ji_woz") / nrow(test_data_ji) + 1), "\n")
+```
+
+## Modeling Attentive Listening
+### Logistic Regression 
+```{r att_lg}
+set.seed(1234)
+
+lg_model_att <- logistic_reg() %>% 
+  set_mode("classification") %>% 
+  set_engine("glm")
+
+lg_workflow_att <- workflow() %>%
+  add_recipe(recipe_att) %>% 
+  add_model(lg_model_att)
+
+lg_fit_att <- lg_workflow_att %>% 
+  fit(data = train_data_att)
+
+lg_predictions_att <- lg_fit_att %>%
+  predict(new_data = test_data_att) %>% 
+  bind_cols(test_data_att)
+
+ConfusionMatrix(lg_predictions_att$.pred_class, test_data_att$Condition)
+
+cat("\nLogistic Regression Attentive Listening Performance Metrics:\n")
+cat("Accuracy:", Accuracy(y_true = lg_predictions_att$Condition, y_pred = lg_predictions_att$.pred_class), "\n")
+cat("Precision:", Precision(y_true = lg_predictions_att$Condition, y_pred = lg_predictions_att$.pred_class, positive = "att_woz"), "\n")
+cat("Recall:", Recall(y_true = lg_predictions_att$Condition, y_pred = lg_predictions_att$.pred_class, positive = "att_woz"), "\n")
+cat("F1 Score:", F1_Score(y_true = lg_predictions_att$Condition, y_pred = lg_predictions_att$.pred_class, positive = "att_woz"), "\n")
+```
+
+### Support Vector Machine
+```{r att_svm}
+set.seed(1234)
+
+svm_model_att <- svm_rbf() %>% 
+  set_mode("classification") %>% 
+  set_engine("kernlab")
+
+svm_workflow_att <- workflow() %>%
+  add_recipe(recipe_att) %>% 
+  add_model(svm_model_att)
+
+svm_fit_att <- svm_workflow_att %>% 
+  fit(data = train_data_att)
+
+svm_predictions_att <- svm_fit_att %>%
+  predict(new_data = test_data_att) %>% 
+  bind_cols(test_data_att)
+
+ConfusionMatrix(svm_predictions_att$.pred_class, test_data_att$Condition)
+
+cat("\nSupport Vector Machine Attentive Listening Performance Metrics:\n")
+cat("Accuracy:", Accuracy(y_true = svm_predictions_att$Condition, y_pred = svm_predictions_att$.pred_class), "\n")
+cat("Precision:", Precision(y_true = svm_predictions_att$Condition, y_pred = svm_predictions_att$.pred_class, positive = "att_woz"), "\n")
+cat("Recall:", Recall(y_true = svm_predictions_att$Condition, y_pred = svm_predictions_att$.pred_class, positive = "att_woz"), "\n")
+cat("F1 Score:", F1_Score(y_true = svm_predictions_att$Condition, y_pred = svm_predictions_att$.pred_class, positive = "att_woz"), "\n")
+```
+
+### Random Forest
+```{r att_rf}
+set.seed(1234)
+
+rf_model_att <- rand_forest() %>% 
+  set_mode("classification") %>% 
+  set_engine("ranger")
+
+rf_workflow_att <- workflow() %>%
+  add_recipe(recipe_att) %>% 
+  add_model(rf_model_att)
+
+rf_fit_att <- rf_workflow_att %>% 
+  fit(data = train_data_att)
+
+rf_predictions_att <- rf_fit_att %>%
+  predict(new_data = test_data_att) %>% 
+  bind_cols(test_data_att)
+
+ConfusionMatrix(rf_predictions_att$.pred_class, test_data_att$Condition)
+
+cat("\nRandom Forest Attentive Listening Performance Metrics:\n")
+cat("Accuracy:", Accuracy(y_true = rf_predictions_att$Condition, y_pred = rf_predictions_att$.pred_class), "\n")
+cat("Precision:", Precision(y_true = rf_predictions_att$Condition, y_pred = rf_predictions_att$.pred_class, positive = "att_woz"), "\n")
+cat("Recall:", Recall(y_true = rf_predictions_att$Condition, y_pred = rf_predictions_att$.pred_class, positive = "att_woz"), "\n")
+cat("F1 Score:", F1_Score(y_true = rf_predictions_att$Condition, y_pred = rf_predictions_att$.pred_class, positive = "att_woz"), "\n")
+```
+
+## Modeling Job Interview
+### Logistic Regression
+```{r ji_lg}
+set.seed(1234)
+
+lg_model_ji <- logistic_reg() %>% 
+  set_mode("classification") %>% 
+  set_engine("glm")
+
+lg_workflow_ji <- workflow() %>%
+  add_recipe(recipe_ji) %>% 
+  add_model(lg_model_ji)
+
+lg_fit_ji <- lg_workflow_ji %>% 
+  fit(data = train_data_ji)
+
+lg_predictions_ji <- lg_fit_ji %>%
+  predict(new_data = test_data_ji) %>% 
+  bind_cols(test_data_ji)
+
+ConfusionMatrix(lg_predictions_ji$.pred_class, test_data_ji$Condition)
+
+cat("\nLogistic Regression Job Interview Performance Metrics:\n")
+cat("Accuracy:", Accuracy(y_true = lg_predictions_ji$Condition, y_pred = lg_predictions_ji$.pred_class), "\n")
+cat("Precision:", Precision(y_true = lg_predictions_ji$Condition, y_pred = lg_predictions_ji$.pred_class, positive = "ji_woz"), "\n")
+cat("Recall:", Recall(y_true = lg_predictions_ji$Condition, y_pred = lg_predictions_ji$.pred_class, positive = "ji_woz"), "\n")
+cat("F1 Score:", F1_Score(y_true = lg_predictions_ji$Condition, y_pred = lg_predictions_ji$.pred_class, positive = "ji_woz"), "\n")
+```
+
+### Support Vector Machine
+```{r ji_svm}
+set.seed(1234)
+
+svm_model_ji <- svm_rbf() %>% 
+  set_mode("classification") %>% 
+  set_engine("kernlab")
+
+svm_workflow_ji <- workflow() %>%
+  add_recipe(recipe_ji) %>% 
+  add_model(svm_model_ji)
+
+svm_fit_ji <- svm_workflow_ji %>% 
+  fit(data = train_data_ji)
+
+svm_predictions_ji <- svm_fit_ji %>%
+  predict(new_data = test_data_ji) %>% 
+  bind_cols(test_data_ji)
+
+ConfusionMatrix(svm_predictions_ji$.pred_class, test_data_ji$Condition)
+
+cat("\nSupport Vector Machine Job Interview Performance Metrics:\n")
+cat("Accuracy:", Accuracy(y_true = svm_predictions_ji$Condition, y_pred = svm_predictions_ji$.pred_class), "\n")
+cat("Precision:", Precision(y_true = svm_predictions_ji$Condition, y_pred = svm_predictions_ji$.pred_class, positive = "ji_woz"), "\n")
+cat("Recall:", Recall(y_true = svm_predictions_ji$Condition, y_pred = svm_predictions_ji$.pred_class, positive = "ji_woz"), "\n")
+cat("F1 Score:", F1_Score(y_true = svm_predictions_ji$Condition, y_pred = svm_predictions_ji$.pred_class, positive = "ji_woz"), "\n")
+```
+
+### Random Forest
+```{r ji_rf}
+set.seed(1234)
+
+rf_model_ji <- rand_forest() %>% 
+  set_mode("classification") %>% 
+  set_engine("ranger")
+
+rf_workflow_ji <- workflow() %>%
+  add_recipe(recipe_ji) %>% 
+  add_model(rf_model_ji)
+
+rf_fit_ji <- rf_workflow_ji %>% 
+  fit(data = train_data_ji)
+
+rf_predictions_ji <- rf_fit_ji %>%
+  predict(new_data = test_data_ji) %>% 
+  bind_cols(test_data_ji)
+
+ConfusionMatrix(rf_predictions_ji$.pred_class, test_data_ji$Condition)
+
+cat("\nRandom Forest Job Interview Performance Metrics:\n")
+cat("Accuracy:", Accuracy(y_true = rf_predictions_ji$Condition, y_pred = rf_predictions_ji$.pred_class), "\n")
+cat("Precision:", Precision(y_true = rf_predictions_ji$Condition, y_pred = rf_predictions_ji$.pred_class, positive = "ji_woz"), "\n")
+cat("Recall:", Recall(y_true = rf_predictions_ji$Condition, y_pred = rf_predictions_ji$.pred_class, positive = "ji_woz"), "\n")
+cat("F1 Score:", F1_Score(y_true = rf_predictions_ji$Condition, y_pred = rf_predictions_ji$.pred_class, positive = "ji_woz"), "\n")
+```
+
+## Summary of Models' Performance
+### Attentive Listening
+```{r att_models}
+# attentive listening models
+data.frame(Model = c("baseline", "lg", "svm", "rf"),
+                               Accuracy = c(mean(baseline_predictions_att == test_data_att$Condition), 
+                                            Accuracy(y_true = lg_predictions_att$Condition, y_pred = lg_predictions_att$.pred_class),
+                                            Accuracy(y_true = svm_predictions_att$Condition, y_pred = svm_predictions_att$.pred_class),
+                                            Accuracy(y_true = rf_predictions_att$Condition, y_pred = rf_predictions_att$.pred_class)
+                                            ),
+                               Precision = c(sum(test_data_att$Condition == "att_woz") / nrow(test_data_att),
+                                             Precision(y_true = lg_predictions_att$Condition, y_pred = lg_predictions_att$.pred_class, positive = "att_woz"),
+                                             Precision(y_true = svm_predictions_att$Condition, y_pred = svm_predictions_att$.pred_class, positive = "att_woz"),
+                                             Precision(y_true = rf_predictions_att$Condition, y_pred = rf_predictions_att$.pred_class, positive = "att_woz")
+                                             ),
+                               Recall = c(1,
+                                          Recall(y_true = lg_predictions_att$Condition, y_pred = lg_predictions_att$.pred_class, positive = "att_woz"),
+                                          Recall(y_true = svm_predictions_att$Condition, y_pred = svm_predictions_att$.pred_class, positive = "att_woz"),
+                                          Recall(y_true = rf_predictions_att$Condition, y_pred = rf_predictions_att$.pred_class, positive = "att_woz")
+                                          ),
+                               F1 = c(2 * ((sum(test_data_att$Condition == "att_woz") / nrow(test_data_att)) * 1) / ((sum(test_data_att$Condition == "att_woz") / nrow(test_data_att)) + 1),
+                                      F1_Score(y_true = lg_predictions_att$Condition, y_pred = lg_predictions_att$.pred_class, positive = "att_woz"),
+                                      F1_Score(y_true = svm_predictions_att$Condition, y_pred = svm_predictions_att$.pred_class, positive = "att_woz"),
+                                      F1_Score(y_true = rf_predictions_att$Condition, y_pred = rf_predictions_att$.pred_class, positive = "att_woz")
+                                      )
+                             )
+```
+
+### Job Interview
+```{r ji_models}
+# job interview models
+data.frame(Model = c("baseline", "lg", "svm", "rf"),
+                               Accuracy = c(mean(baseline_predictions_ji == test_data_ji$Condition),
+                                            Accuracy(y_true = lg_predictions_ji$Condition, y_pred = lg_predictions_ji$.pred_class),
+                                            Accuracy(y_true = svm_predictions_ji$Condition, y_pred = svm_predictions_ji$.pred_class),
+                                            Accuracy(y_true = rf_predictions_ji$Condition, y_pred = rf_predictions_ji$.pred_class)
+                                            ),
+                               Precision = c(sum(test_data_ji$Condition == "ji_woz") / nrow(test_data_ji),
+                                             Precision(y_true = lg_predictions_ji$Condition, y_pred = lg_predictions_ji$.pred_class, positive = "ji_woz"),
+                                             Precision(y_true = svm_predictions_ji$Condition, y_pred = svm_predictions_ji$.pred_class, positive = "ji_woz"),
+                                             Precision(y_true = rf_predictions_ji$Condition, y_pred = rf_predictions_ji$.pred_class, positive = "ji_woz")
+                                             ),
+                               Recall = c(1,
+                                          Recall(y_true = lg_predictions_ji$Condition, y_pred = lg_predictions_ji$.pred_class, positive = "ji_woz"),
+                                          Recall(y_true = svm_predictions_ji$Condition, y_pred = svm_predictions_ji$.pred_class, positive = "ji_woz"),
+                                          Recall(y_true = rf_predictions_ji$Condition, y_pred = rf_predictions_ji$.pred_class, positive = "ji_woz")
+                                          ),
+                               F1 = c(2 * ((sum(test_data_ji$Condition == "ji_woz") / nrow(test_data_ji)) * 1) / ((sum(test_data_ji$Condition == "ji_woz") / nrow(test_data_ji)) + 1),
+                                      F1_Score(y_true = lg_predictions_ji$Condition, y_pred = lg_predictions_ji$.pred_class, positive = "ji_woz"),
+                                      F1_Score(y_true = svm_predictions_ji$Condition, y_pred = svm_predictions_ji$.pred_class, positive = "ji_woz"),
+                                      F1_Score(y_true = rf_predictions_ji$Condition, y_pred = rf_predictions_ji$.pred_class, positive = "ji_woz")
+                                      )
+                             )
+```
+
+
+## Variable Importance Plot (VIP) for Random Forest Models
+```{r vip}
+# attentive listening
+# Define a custom prediction function for ranger models
+custom_predict_att <- function(object, newdata, threshold = 0.5) {
+  preds <- predict(object, data = newdata, type = "response")$predictions
+  factor(ifelse(preds[, "att_woz"] >= threshold, "att_woz", "att_robot"),
+         levels = c("att_robot", "att_woz"))
+}
+
+# Extract the fitted model from the workflow
+fitted_model_att <- extract_fit_parsnip(rf_fit_att)$fit
+
+# Calculate permutation feature importance
+perm_imp_att <- vi(
+  object = fitted_model_att,
+  method = "permute",
+  train = train_data_att,
+  target = "Condition",
+  metric = "accuracy",
+  pred_wrapper = custom_predict_att
+)
+
+# job interview
+# Define a custom prediction function for ranger models
+custom_predict_ji <- function(object, newdata, threshold = 0.5) {
+  preds <- predict(object, data = newdata, type = "response")$predictions
+  factor(ifelse(preds[, "ji_woz"] >= threshold, "ji_woz", "ji_robot"),
+         levels = c("ji_robot", "ji_woz"))
+}
+
+# Extract the fitted model from the workflow
+fitted_model_ji <- extract_fit_parsnip(rf_fit_ji)$fit
+
+# Calculate permutation feature importance
+perm_imp_ji <- vi(
+  object = fitted_model_ji,
+  method = "permute",
+  train = train_data_ji,
+  target = "Condition",
+  metric = "accuracy",
+  pred_wrapper = custom_predict_ji
+)
+```
+
+### Attentive Listening
+```{r att_plot}
+vip_att <- as.data.frame(perm_imp_att)
+vip_att
+
+# Custom names for the features (for example, renaming the internal names to publication-friendly names)
+feature_names <- c("MeanPower" = "Mean Power",
+                   "SpRateIPU" = "Speaking Rate",
+                   "MeanF0" = "Mean f0",
+                   "SDF0" = "SD f0",
+                   "SDPower" = "SD Power",
+                   "MECAB_read_len" = "Length",
+                   "fps_ipu" = "Fps",
+                   "bcps_ipu" = "Bps",
+                   "NumFiller" = "Filler Count",
+                   "dps_ipu" = "Dps",
+                   "NumBackchannel" = "Backchannel Count",
+                   "lps_ipu" = "Lps",
+                   "NumDisfluency" = "Disfluency Count",
+                   "NumLaugh" = "Laugh Count"
+                   )
+
+# Use ggplot2 to create a customized variable importance plot
+plot_att <- ggplot(vip_att, aes(x = reorder(Variable, Importance), y = Importance)) +
+  geom_bar(stat = "identity", fill = "steelblue") +  # Customize bar color
+  coord_flip() +  # Flip coordinates for a horizontal bar plot
+  theme_minimal(base_family = "Times", base_size = 22) +  # Set font family and size to match LaTeX
+  labs(
+    x = "Feature",
+    y = "Importance"
+  ) +
+  scale_x_discrete(labels = feature_names) +  # Apply custom names to features
+  theme(
+    axis.text.y = element_text(size = 22),  # Customize y-axis text size
+    axis.title.x = element_text(size = 22),  # Customize x-axis title size
+    axis.title.y = element_text(size = 22),  # Customize y-axis title size
+    panel.grid.major = element_line(color = "grey80"),  # Customize major grid lines
+    panel.grid.minor = element_blank(),  # Remove minor grid lines
+  )
+
+plot_att
+
+#ggsave(here::here("output/plots/vip_att.pdf"), plot = plot_att, device = "pdf", width = 7, height = 6)
+```
+
+### Job Interview
+```{r ji_plot}
+vip_ji <- as.data.frame(perm_imp_ji)
+vip_ji
+
+plot_ji <- ggplot(vip_ji, aes(x = reorder(Variable, Importance), y = Importance)) +
+  geom_bar(stat = "identity", fill = "steelblue") +  # Customize bar color
+  coord_flip() +  # Flip coordinates for a horizontal bar plot
+  theme_minimal(base_family = "Times", base_size = 14) +  # Set font family and size to match LaTeX
+  labs(
+    x = "Feature",
+    y = "Importance"
+  ) +
+  scale_x_discrete(labels = feature_names) +  # Apply custom names to features
+  theme(
+    axis.text.y = element_text(size = 14),  # Customize y-axis text size
+    axis.title.x = element_text(size = 14),  # Customize x-axis title size
+    axis.title.y = element_text(size = 14),  # Customize y-axis title size
+    panel.grid.major = element_line(color = "grey80"),  # Customize major grid lines
+    panel.grid.minor = element_blank(),  # Remove minor grid lines
+  )
+
+plot_ji
+
+#ggsave(here::here("output/plots/vip_ji.pdf"), plot = plot_ji, device = "pdf", width = 5, height = 3)
+```

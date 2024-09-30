@@ -1,0 +1,961 @@
+---
+title: "Analysis"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE)
+```
+
+```{r library, message = FALSE}
+library(tidyverse)
+library(car)
+```
+
+```{r functions}
+calc_perc_inc <- function(V2, V1) {
+  diff <- ((V2 - V1) / abs(V1)) * 100
+  cat("Percent difference:", diff, "\n")
+}
+```
+
+```{r load_data}
+## Load data
+df <- read.csv(here::here("data/data.csv"))
+
+# convert Condition to factor
+df$Condition <- factor(df$Condition)
+
+# subset into data frames (df) for analysis
+df_att_subj <- df %>% 
+  filter(Speaker == "Subject" & Condition %in% c("att_robot", "att_woz"))
+
+df_ji_subj <- df %>% 
+  filter(Speaker == "Subject" & Condition %in% c("ji_robot", "ji_woz"))
+
+# drop unused levels from df
+df_att_subj$Condition <- droplevels(df_att_subj$Condition)
+
+df_ji_subj$Condition <- droplevels(df_ji_subj$Condition)
+```
+
+## Length
+len (in characters) measured for each ipu
+
+### Summary
+mean/sd woz > robot (att)
+
+- 7.25% increase in mean for woz compared to robot
+- 8.93% increase in sd for woz compared to robot
+- indicates that speakers say more and have greater variability (more dynamic) in woz condition (att. listening condition is low-stress and self-directed)  
+
+mean/sd woz < robot (ji)
+
+- -18.17 decrease in mean for woz compared to robot
+- -15.48 decrease in sd for woz compared to robot
+- indicates that speakers say less and with smaller variability in the woz condition (ji condition is high-stress; possible nervousness)
+- this may indicate that the woz operator better emulated a job interview scenario and led the speakers to answer more simply
+```{r summary_len}
+df_att_subj %>%
+  group_by(Condition) %>% 
+  summarise(
+    count = n(),
+    min = min(MECAB_read_len),
+    max = max(MECAB_read_len),
+    median = median(MECAB_read_len),
+    mean = mean(MECAB_read_len),
+    sd = sd(MECAB_read_len)
+  ) %>% 
+  ungroup() %>% 
+  mutate(
+   perc_change_mean = calc_perc_inc(mean[2], mean[1]),
+   perc_change_sd = calc_perc_inc(sd[2], sd[1])
+  )
+
+df_ji_subj %>%
+  group_by(Condition) %>% 
+  summarise(
+    count = n(),
+    min = min(MECAB_read_len),
+    max = max(MECAB_read_len),
+    median = median(MECAB_read_len),
+    mean = mean(MECAB_read_len),
+    sd = sd(MECAB_read_len)
+  ) %>% 
+  ungroup() %>% 
+  mutate(
+    perc_change_mean = calc_perc_inc(mean[2], mean[1]),
+    perc_change_sd = calc_perc_inc(sd[2], sd[1])
+  )
+```
+
+### Assumptions
+Normality and homogeneity of variances assumptions violated
+```{r assumptions_len}
+cat("assumptions testing attentive listening\n")
+# normality: violated
+ggplot(df_att_subj, aes(x = MECAB_read_len)) +
+  geom_histogram(binwidth = 1, fill = "skyblue", color = "black") +
+  facet_wrap(~ Condition, scales = "free", nrow = 2) +
+  labs(title = "Histogram of IPU Length by Condition for Attentive Listening", x = "IPU Length", y = "Frequency")
+
+# homogeneity of variances: violated
+# H0: variances are equal
+# H1: variances are not equal
+# p-value < 0.05 (variances are significantly different between groups)
+leveneTest(MECAB_read_len ~ Condition, data = df_att_subj)
+
+cat("assumptions testing job interview\n")
+# normality: violated
+# H0: samples come from a normal distribution
+# H1: samples do not come from a normal distribution
+# p-values < 0.05 (data deviates from normality)
+shapiro.test(df_ji_subj$MECAB_read_len[df_ji_subj$Condition == "ji_robot"])
+shapiro.test(df_ji_subj$MECAB_read_len[df_ji_subj$Condition == "ji_woz"])
+
+# normality: violated
+ggplot(df_ji_subj, aes(x = MECAB_read_len)) +
+  geom_histogram(binwidth = 1, fill = "skyblue", color = "black") +
+  facet_wrap(~ Condition, scales = "free", nrow = 2) +
+  labs(title = "Histogram of IPU Length by Condition for Job Interview", x = "IPU Length", y = "Frequency")
+
+# homogeneity of variances: violated
+# H0: variances are equal
+# H1: variances are not equal
+# p-value < 0.05 (variances are significantly different between groups)
+leveneTest(MECAB_read_len ~ Condition, data = df_ji_subj)
+```
+
+### Significance Testing
+- Non-parametric Wilcoxon rank-sum test
+- Significant differences (p < 0.001 ***) between conditions for both attentive listening and job interview data
+```{r significance_len}
+# Assumptions of normality and homogeneity of variances violated -> non-parametric tests used
+cat("significance testing attentive listening\n") 
+
+# Wilcoxon rank-sum/Mann-Whitney U test
+# p < 0.001 ***
+wilcox.test(MECAB_read_len ~ Condition, data = df_att_subj)
+
+cat("significance testing job interview\n")
+
+# Wilcoxon rank-sum/Mann-Whitney U test
+# p < 0.001 ***
+wilcox.test(MECAB_read_len ~ Condition, data = df_ji_subj)
+```
+
+## Speaking Rate
+measured in characters per second for each ipu
+
+### Summary
+mean/sd woz > robot (att)
+
+- 8.66% increase in mean for woz compared to robot
+- 9.06% increase in sd for woz compared to robot
+- indicates that speakers speak faster and have greater variability (more dynamic) in woz condition (att. listening condition is low-stress and self-directed)
+
+mean/sd woz > robot (ji)
+
+- 6.60% increase in mean for woz compared to robot
+- 16.53% increase in sd for woz compared to robot
+- the faster speaking rate for ji may be due to nervousness during interview
+
+```{r summary_SpRate}
+df_att_subj %>%
+  group_by(Condition) %>% 
+  summarise(
+    count = n(),
+    min = min(SpRateIPU),
+    max = max(SpRateIPU),
+    median = median(SpRateIPU),
+    mean = mean(SpRateIPU),
+    sd = sd(SpRateIPU)
+  ) %>% 
+  ungroup() %>% 
+  mutate(
+    perc_change_mean = calc_perc_inc(mean[2], mean[1]),
+    perc_change_sd = calc_perc_inc(sd[2], sd[1])
+  )
+
+df_ji_subj %>%
+  group_by(Condition) %>% 
+  summarise(
+    count = n(),
+    min = min(SpRateIPU),
+    max = max(SpRateIPU),
+    median = median(SpRateIPU),
+    mean = mean(SpRateIPU),
+    sd = sd(SpRateIPU)
+  ) %>% 
+  ungroup() %>% 
+  mutate(
+    perc_change_mean = calc_perc_inc(mean[2], mean[1]),
+    perc_change_sd = calc_perc_inc(sd[2], sd[1])
+  )
+```
+
+### Assumptions
+Normality and homogeneity of variances assumptions violated
+```{r assumptions_SpRate, message = FALSE}
+cat("assumptions testing attentive listening\n")
+# normality: violated
+ggplot(df_att_subj, aes(x = SpRateIPU)) +
+  geom_histogram(fill = "skyblue", color = "black") +
+  facet_wrap(~ Condition, scales = "free", nrow = 2) +
+  labs(title = "Histogram of Speaking Rate (IPU) by Condition for Attentive Listening", x = "Speaking Rate (IPU)", y = "Frequency")
+
+# homogeneity of variances: violated
+# H0: variances are equal
+# H1: variances are not equal
+# p-value < 0.05 (variances are significantly different between groups)
+leveneTest(SpRateIPU ~ Condition, data = df_att_subj)
+
+cat("assumptions testing job interview\n")
+# normality: violated
+# H0: samples come from a normal distribution
+# H1: samples do not come from a normal distribution
+# p-values < 0.05 (data deviates from normality)
+shapiro.test(df_ji_subj$SpRateIPU[df_ji_subj$Condition == "ji_robot"])
+shapiro.test(df_ji_subj$SpRateIPU[df_ji_subj$Condition == "ji_woz"])
+
+# normality: violated
+ggplot(df_ji_subj, aes(x = SpRateIPU)) +
+  geom_histogram(fill = "skyblue", color = "black") +
+  facet_wrap(~ Condition, scales = "free", nrow = 2) +
+  labs(title = "Histogram of Speaking Rate (IPU) by Condition for Job Interview", x = "Speaking Rate (IPU)", y = "Frequency")
+
+# homogeneity of variances: violated
+# H0: variances are equal
+# H1: variances are not equal
+# p-value < 0.05 (variances are significantly different between groups)
+leveneTest(SpRateIPU ~ Condition, data = df_ji_subj)
+```
+
+### Significance Testing
+- Non-parametric Wilcoxon rank-sum test
+- Significant differences (p < 0.001 ***) between conditions for both attentive listening and job interview data
+```{r significance_SpRate}
+# Assumptions of normality and homogeneity of variances violated -> non-parametric tests used
+cat("significance testing attentive listening\n")
+
+# Wilcoxon rank-sum/Mann-Whitney U test
+# p < 0.001 ***
+wilcox.test(SpRateIPU ~ Condition, data = df_att_subj)
+
+cat("significance testing job interview\n")
+
+# Wilcoxon rank-sum/Mann-Whitney U test
+# p < 0.001 ***
+wilcox.test(SpRateIPU ~ Condition, data = df_ji_subj)
+```
+
+## Fillers (Count)
+measured in count for each ipu
+
+### Summary
+count woz > robot (att)
+
+- 11.73% increase woz compared to robot
+- subjects use more fillers in woz condition
+- the attentive listening scenario is mostly self-driven and low-stakes so the presence of fillers is expected
+- the woz operator does a better job of creating a natural atmosphere for the subject to use fillers
+
+count woz < robot (ji)
+
+- -34.68% decrease woz compared to robot
+- subjects use less fillers in woz condition
+- job interviews demand a high level of speaking ability so it follows that interviewees would strive to reduce their filler usage
+- the operator is better able to emulate a real job interview situation and lead subjects to use less fillers
+```{r summary_filler}
+df_att_subj %>%
+  group_by(Condition) %>%
+  summarise(
+    count = n(),
+    filler_true = sum(HasFiller == TRUE),
+    filler_false = sum(HasFiller == FALSE),
+    percFiller = filler_true / count * 100
+  ) %>% 
+  ungroup() %>% 
+  mutate(
+   perc_change = calc_perc_inc(percFiller[2], percFiller[1]),
+  )
+
+df_ji_subj %>%
+  group_by(Condition) %>%
+  summarise(
+    count = n(),
+    filler_true = sum(HasFiller == TRUE),
+    filler_false = sum(HasFiller == FALSE),
+    percFiller = filler_true / count * 100
+  ) %>% 
+  ungroup() %>% 
+  mutate(
+   perc_change = calc_perc_inc(percFiller[2], percFiller[1]),
+  )
+```
+
+### Significance Testing
+- Non-parametric Chi-squared test
+- Significant differences (p < 0.001 ***) between conditions for both attentive listening and job interview data
+```{r significance_filler}
+# chisq test: attentive listening
+# p < 0.001 *** number of fillers differs between conditions
+chisq.test(df_att_subj %>% 
+             group_by(Condition) %>%
+             summarise(
+               filler_true = sum(HasFiller == TRUE),
+               filler_false = sum(HasFiller == FALSE)
+             ) %>% 
+             ungroup() %>%
+             select(-1)
+          )
+
+# chisq test: job interview
+# p < 0.001 *** number of fillers differs between conditions
+chisq.test(df_ji_subj %>% 
+             group_by(Condition) %>%
+             summarise(
+               filler_true = sum(HasFiller == TRUE),
+               filler_false = sum(HasFiller == FALSE)
+             ) %>% 
+             ungroup() %>%
+             select(-1)
+          )
+```
+
+## Fillers per second (fps)
+number of fillers (per ipu) / ipu duration
+
+### Summary
+mean/sd woz > robot (att)
+
+- 23.40% increase in mean for woz compared to robot
+- 32.82% increase in sd for woz compared to robot
+- speakers have a higher average fps and greater variability for fps for woz compared to robot
+
+mean woz < robot & sd woz > robot (ji)
+
+- -3.62 decrease in mean for woz compared to robot
+- 63.98 increase in sd for woz compared to robot
+- speakers decrease their average fps for the woz condition indicating that the operator might simulate a more realistic job interview
+```{r summary_fps}
+df_att_subj %>%
+  group_by(Condition) %>% 
+  summarise(
+    count = n(),
+    min = min(fps_ipu),
+    max = max(fps_ipu),
+    median = median(fps_ipu),
+    mean = mean(fps_ipu),
+    sd = sd(fps_ipu)
+  ) %>% 
+  ungroup() %>% 
+  mutate(
+   perc_change_mean = calc_perc_inc(mean[2], mean[1]),
+   perc_change_sd = calc_perc_inc(sd[2], sd[1])
+  )
+
+df_ji_subj %>%
+  group_by(Condition) %>% 
+  summarise(
+    count = n(),
+    min = min(fps_ipu),
+    max = max(fps_ipu),
+    median = median(fps_ipu),
+    mean = mean(fps_ipu),
+    sd = sd(fps_ipu)
+  ) %>%
+  ungroup() %>% 
+  mutate(
+    perc_change_mean = calc_perc_inc(mean[2], mean[1]),
+    perc_change_sd = calc_perc_inc(sd[2], sd[1])
+  )
+```
+
+### Assumptions
+Normality and homogeneity of variances assumptions violated
+```{r assumptions_fps, message = FALSE}
+cat("assumptions testing attentive listening\n")
+# normality: violated
+ggplot(df_att_subj, aes(x = fps_ipu)) +
+  geom_histogram(fill = "skyblue", color = "black") +
+  facet_wrap(~ Condition, scales = "free", nrow = 2) +
+  labs(title = "Histogram of Fillers per second (IPU) by Condition for Attentive Listening", x = "Fillers per second (IPU)", y = "Frequency")
+
+# homogeneity of variances: violated
+# H0: variances are equal
+# H1: variances are not equal
+# p-value < 0.05 (variances are significantly different between groups)
+leveneTest(fps_ipu ~ Condition, data = df_att_subj)
+
+cat("assumptions testing job interview\n")
+# normality: violated
+# H0: samples come from a normal distribution
+# H1: samples do not come from a normal distribution
+# p-values < 0.05 (data deviates from normality)
+shapiro.test(df_ji_subj$fps_ipu[df_ji_subj$Condition == "ji_robot"])
+shapiro.test(df_ji_subj$fps_ipu[df_ji_subj$Condition == "ji_woz"])
+
+# normality: violated
+ggplot(df_ji_subj, aes(x = fps_ipu)) +
+  geom_histogram(fill = "skyblue", color = "black") +
+  facet_wrap(~ Condition, scales = "free", nrow = 2) +
+  labs(title = "Histogram of Fillers per second by Condition for Job Interview", x = "Fillers per second (IPU)", y = "Frequency")
+
+# homogeneity of variances: not violated
+# H0: variances are equal
+# H1: variances are not equal
+# p-value > 0.05 (variances are not significantly different between groups)
+leveneTest(fps_ipu ~ Condition, data = df_ji_subj)
+```
+
+### Significance Testing
+- Non-parametric Wilcoxon rank-sum test
+- Significant differences (p < 0.001 ***) between conditions for both attentive listening and job interview data
+```{r significance_fps}
+# Assumptions of normality violated -> non-parametric tests used
+cat("significance testing attentive listening\n")
+
+# Wilcoxon rank-sum/Mann-Whitney U test
+# p < 0.001 ***
+wilcox.test(fps_ipu ~ Condition, data = df_att_subj)
+
+cat("significance testing job interview\n")
+
+# Wilcoxon rank-sum/Mann-Whitney U test
+# p < 0.001 ***
+wilcox.test(fps_ipu ~ Condition, data = df_ji_subj)
+```
+
+## Backchannels (Count)
+measured in count for each ipu
+
+### Summary
+count woz > robot (att)
+
+- 10.05% increase woz compared to robot
+- subjects use more backchannels in woz condition
+- subjects are more active listeners with the woz operator than with the robot
+
+count woz > robot (ji)
+
+- 79.90% increase woz compared to robot
+- subjects use more backchannels in woz condition
+- subjects are more active listeners in the woz condition which means that the job interview situation might feel more realistic since it demands a focused backchannel usage
+```{r summary_backhannel}
+df_att_subj %>%
+  group_by(Condition) %>%
+  summarise(
+    count = n(),
+    backchannel_true = sum(HasBackchannel == TRUE),
+    backchannel_false = sum(HasBackchannel == FALSE),
+    percBackchannel = backchannel_true / count * 100
+  ) %>% 
+  ungroup() %>% 
+  mutate(
+   perc_change = calc_perc_inc(percBackchannel[2], percBackchannel[1]),
+  )
+
+df_ji_subj %>%
+  group_by(Condition) %>%
+  summarise(
+    count = n(),
+    backchannel_true = sum(HasBackchannel == TRUE),
+    backchannel_false = sum(HasBackchannel == FALSE),
+    percBackchannel = backchannel_true / count * 100
+  ) %>% 
+  ungroup() %>% 
+    mutate(
+   perc_change = calc_perc_inc(percBackchannel[2], percBackchannel[1]),
+  )
+```
+
+### Significance Testing
+- Non-parametric Chi-squared test
+- Significant differences (p < 0.001 ***) between conditions for both attentive listening and job interview data
+```{r significance_backchannel}
+# chisq test: attentive listening
+# p < 0.001 *** number of backchannels differs between conditions
+chisq.test(df_att_subj %>% 
+             group_by(Condition) %>%
+             summarise(
+               backchannel_true = sum(HasBackchannel == TRUE),
+               backchannel_false = sum(HasBackchannel == FALSE)
+             ) %>% 
+             ungroup() %>%
+             select(-1)
+          )
+
+# chisq test: job interview
+# p < 0.001 *** number of backchannels differs between conditions
+chisq.test(df_ji_subj %>% 
+             group_by(Condition) %>%
+             summarise(
+               backchannel_true = sum(HasBackchannel == TRUE),
+               backchannel_false = sum(HasBackchannel == FALSE)
+             ) %>% 
+             ungroup() %>%
+             select(-1)
+          )
+```
+
+## Backchannels per second (bcps)
+number of backchannels (per ipu) / ipu duration
+
+### Summary
+mean/sd woz > robot (att)
+
+- 22.57% increase in mean for woz compared to robot
+- 18.42% increase in sd for woz compared to robot
+- speakers have higher average bcps and greater variability for bcps for woz compared to robot
+- woz operator able to elicit greater active listening (even in a predominantly subject-led dialogue) than robot
+
+mean/sd woz > robot (ji)
+
+- 121.03% increase in mean for woz compared to robot
+- 59.87% increase in sd for woz compared to robot
+- speakers have higher average bcps and greater variability for bcps for woz compared to robot
+- woz operator able to elicit greater active listening for job interview (better engagement) than robot
+```{r summary_bcps}
+df_att_subj %>%
+  group_by(Condition) %>% 
+  summarise(
+    count = n(),
+    min = min(bcps_ipu),
+    max = max(bcps_ipu),
+    median = median(bcps_ipu),
+    mean = mean(bcps_ipu),
+    sd = sd(bcps_ipu)
+  ) %>% 
+  ungroup() %>% 
+  mutate(
+   perc_change_mean = calc_perc_inc(mean[2], mean[1]),
+   perc_change_sd = calc_perc_inc(sd[2], sd[1])
+  )
+
+df_ji_subj %>%
+  group_by(Condition) %>% 
+  summarise(
+    count = n(),
+    min = min(bcps_ipu),
+    max = max(bcps_ipu),
+    median = median(bcps_ipu),
+    mean = mean(bcps_ipu),
+    sd = sd(bcps_ipu)
+  ) %>%
+  ungroup() %>% 
+  mutate(
+    perc_change_mean = calc_perc_inc(mean[2], mean[1]),
+    perc_change_sd = calc_perc_inc(sd[2], sd[1])
+  )
+```
+
+### Assumptions
+Normality and homogeneity of variances assumptions violated
+```{r assumptions_bcps, message = FALSE}
+cat("assumptions testing attentive listening\n")
+# normality: violated
+ggplot(df_att_subj, aes(x = bcps_ipu)) +
+  geom_histogram(fill = "skyblue", color = "black") +
+  facet_wrap(~ Condition, scales = "free", nrow = 2) +
+  labs(title = "Histogram of Backchannels per second (IPU) by Condition for Attentive Listening", x = "Backchannels per second (IPU)", y = "Frequency")
+
+# homogeneity of variances: violated
+# H0: variances are equal
+# H1: variances are not equal
+# p-value < 0.05 (variances are significantly different between groups)
+leveneTest(bcps_ipu ~ Condition, data = df_att_subj)
+
+cat("assumptions testing job interview\n")
+# normality: violated
+# H0: samples come from a normal distribution
+# H1: samples do not come from a normal distribution
+# p-values < 0.05 (data deviates from normality)
+shapiro.test(df_ji_subj$bcps_ipu[df_ji_subj$Condition == "ji_robot"])
+shapiro.test(df_ji_subj$bcps_ipu[df_ji_subj$Condition == "ji_woz"])
+
+# normality: violated
+ggplot(df_ji_subj, aes(x = bcps_ipu)) +
+  geom_histogram(fill = "skyblue", color = "black") +
+  facet_wrap(~ Condition, scales = "free", nrow = 2) +
+  labs(title = "Histogram of Backchannels per second (IPU) by Condition for Job Interview", x = "Backchannels per second (IPU)", y = "Frequency")
+
+# homogeneity of variances: violated
+# H0: variances are equal
+# H1: variances are not equal
+# p-value < 0.05 (variances are significantly different between groups)
+leveneTest(bcps_ipu ~ Condition, data = df_ji_subj)
+```
+
+### Significance Testing
+- Non-parametric Wilcoxon rank-sum test
+- Significant differences (p < 0.001 ***) between conditions for both attentive listening and job interview data
+```{r significance_bcps}
+# Assumptions of normality and homogeneity of variances violated -> non-parametric tests used
+cat("significance testing attentive listening\n")
+
+# Wilcoxon rank-sum/Mann-Whitney U test
+# p < 0.001 ***
+wilcox.test(bcps_ipu ~ Condition, data = df_att_subj)
+
+cat("significance testing job interview\n")
+
+# Wilcoxon rank-sum/Mann-Whitney U test
+# p < 0.001 ***
+wilcox.test(bcps_ipu ~ Condition, data = df_ji_subj)
+```
+
+## Disfluency (Count)
+measured in count for each ipu
+
+### Summary
+count woz < robot (att)
+
+- -17.64% decrease woz compared to robot
+- subjects use less disfluencies in woz condition
+- the woz operator may be less distracting causing less disfluency errors
+
+count woz < robot (ji)
+
+- -10.58% decrease woz compared to robot
+- subjects use less disfluencies in woz condition
+- the woz operator may be less distracting causing less disfluency errors
+```{r summary_disfluency}
+df_att_subj %>%
+  group_by(Condition) %>%
+  summarise(
+    count = n(),
+    disfluency_true = sum(HasDisfluency == TRUE),
+    disfluency_false = sum(HasDisfluency == FALSE),
+    percDisfluency = disfluency_true / count * 100
+  ) %>% 
+  ungroup() %>% 
+  mutate(
+   perc_change = calc_perc_inc(percDisfluency[2], percDisfluency[1]),
+  )
+
+df_ji_subj %>%
+  group_by(Condition) %>%
+  summarise(
+    count = n(),
+    disfluency_true = sum(HasDisfluency == TRUE),
+    disfluency_false = sum(HasDisfluency == FALSE),
+    percDisfluency = disfluency_true / count * 100
+  ) %>% 
+  ungroup() %>% 
+    mutate(
+   perc_change = calc_perc_inc(percDisfluency[2], percDisfluency[1]),
+  )
+```
+
+### Significance Testing
+- Non-parametric Chi-squared test
+- Significant difference (p < 0.001 ***) between conditions for attentive listening but not for the job interview data (p > 0.05)
+```{r significance_disfluency}
+# chisq test: attentive listening
+# p < 0.001 *** number of disfluencies differs between conditions
+chisq.test(df_att_subj %>% 
+             group_by(Condition) %>%
+             summarise(
+               disfluency_true = sum(HasDisfluency == TRUE),
+               disfluency_false = sum(HasDisfluency == FALSE)
+             ) %>% 
+             ungroup() %>%
+             select(-1)
+          )
+
+# chisq test: job interview
+# p > 0.05 number of disfluencies does not differ between conditions
+chisq.test(df_ji_subj %>% 
+             group_by(Condition) %>%
+             summarise(
+               disfluency_true = sum(HasDisfluency == TRUE),
+               disfluency_false = sum(HasDisfluency == FALSE)
+             ) %>% 
+             ungroup() %>%
+             select(-1)
+          )
+```
+
+## Disfluencies per second (dps)
+number of disfluencies (per ipu) / ipu duration
+
+### Summary
+mean woz < robot & sd woz > robot (att)
+
+- -10.17% decrease in mean for woz compared to robot
+- 17.88% increase in sd for woz compared to robot
+- speakers have lower average dps but greater variability for dps for woz compared to robot
+- the woz operator may be less distracting causing less disfluency errors
+
+mean/sd woz > robot (ji)
+
+- 33.37% increase in mean for woz compared to robot
+- 38.98% increase in sd for woz compared to robot
+- speakers have higher average dps and greater variability for dps for woz compared to robot
+```{r summary_dps}
+df_att_subj %>%
+  group_by(Condition) %>% 
+  summarise(
+    count = n(),
+    min = min(dps_ipu),
+    max = max(dps_ipu),
+    median = median(dps_ipu),
+    mean = mean(dps_ipu),
+    sd = sd(dps_ipu)
+  ) %>% 
+  ungroup() %>% 
+  mutate(
+   perc_change_mean = calc_perc_inc(mean[2], mean[1]),
+   perc_change_sd = calc_perc_inc(sd[2], sd[1])
+  )
+
+df_ji_subj %>%
+  group_by(Condition) %>% 
+  summarise(
+    count = n(),
+    min = min(dps_ipu),
+    max = max(dps_ipu),
+    median = median(dps_ipu),
+    mean = mean(dps_ipu),
+    sd = sd(dps_ipu)
+  ) %>%
+  ungroup() %>% 
+  mutate(
+    perc_change_mean = calc_perc_inc(mean[2], mean[1]),
+    perc_change_sd = calc_perc_inc(sd[2], sd[1])
+  )
+```
+
+### Assumptions
+Normality and homogeneity of variances assumptions violated
+```{r assumptions_dps, message = FALSE}
+cat("assumptions testing attentive listening\n")
+# normality: violated
+ggplot(df_att_subj, aes(x = dps_ipu)) +
+  geom_histogram(fill = "skyblue", color = "black") +
+  facet_wrap(~ Condition, scales = "free", nrow = 2) +
+  labs(title = "Histogram of Disfluencies per second (IPU) by Condition for Attentive Listening", x = "Disfluencies per second (IPU)", y = "Frequency")
+
+# homogeneity of variances: not violated
+# H0: variances are equal
+# H1: variances are not equal
+# p-value > 0.05 (variances are not significantly different between groups)
+leveneTest(dps_ipu ~ Condition, data = df_att_subj)
+
+cat("assumptions testing job interview\n")
+# normality: violated
+# H0: samples come from a normal distribution
+# H1: samples do not come from a normal distribution
+# p-values < 0.05 (data deviates from normality)
+shapiro.test(df_ji_subj$dps_ipu[df_ji_subj$Condition == "ji_robot"])
+shapiro.test(df_ji_subj$dps_ipu[df_ji_subj$Condition == "ji_woz"])
+
+# normality: violated
+ggplot(df_ji_subj, aes(x = dps_ipu)) +
+  geom_histogram(fill = "skyblue", color = "black") +
+  facet_wrap(~ Condition, scales = "free", nrow = 2) +
+  labs(title = "Histogram of Disfluencies per second (IPU) by Condition for Job Interview", x = "Disfluencies per second (IPU)", y = "Frequency")
+
+# homogeneity of variances: not violated
+# H0: variances are equal
+# H1: variances are not equal
+# p-value > 0.05 (variances are not significantly different between groups)
+leveneTest(dps_ipu ~ Condition, data = df_ji_subj)
+```
+
+### Significance Testing
+- Non-parametric Wilcoxon rank-sum test
+- Significant difference (p < 0.001 ***) between conditions for attentive listening but not for the job interview data (p > 0.05)
+```{r significance_dps}
+# Assumptions of normality violated -> non-parametric tests used
+cat("significance testing attentive listening\n")
+
+# Wilcoxon rank-sum/Mann-Whitney U test
+# p < 0.001 ***
+wilcox.test(dps_ipu ~ Condition, data = df_att_subj)
+
+cat("significance testing job interview\n")
+
+# Wilcoxon rank-sum/Mann-Whitney U test
+# p > 0.05
+wilcox.test(dps_ipu ~ Condition, data = df_ji_subj)
+```
+
+## Laughter (Count)
+measured in count for each ipu
+
+### Summary
+count woz > robot (att)
+
+- 66.61% increase woz compared to robot
+- subjects use more laughter in woz condition
+- woz operators create a more humorous environment
+
+count woz > robot (ji)
+
+- 418.15% increase woz compared to robot
+- subjects use more laughter in woz condition
+- woz operators create a more humorous environment even in serious situations like a job interview (laughter and humor can be a great icebreaker, relax the situation, build rapport, show people skills, etc.)
+```{r summary_laughter}
+df_att_subj %>%
+  group_by(Condition) %>%
+  summarise(
+    count = n(),
+    laugh_true = sum(HasLaugh == TRUE),
+    laugh_false = sum(HasLaugh == FALSE),
+    percLaugh = laugh_true / count * 100
+  ) %>% 
+  ungroup() %>% 
+  mutate(
+   perc_change = calc_perc_inc(percLaugh[2], percLaugh[1]),
+  )
+
+df_ji_subj %>%
+  group_by(Condition) %>%
+  summarise(
+    count = n(),
+    laugh_true = sum(HasLaugh == TRUE),
+    laugh_false = sum(HasLaugh == FALSE),
+    percLaugh = laugh_true / count * 100
+  ) %>% 
+  ungroup() %>% 
+    mutate(
+   perc_change = calc_perc_inc(percLaugh[2], percLaugh[1]),
+  )
+```
+
+### Significance Testing
+- Non-parametric Chi-squared test
+- Significant differences (p < 0.001 ***) between conditions for both attentive listening and job interview data
+```{r significance_laughter}
+# chisq test: attentive listening
+# p < 0.001 *** number of laughs differs between scenarios
+chisq.test(df_att_subj %>% 
+             group_by(Condition) %>%
+             summarise(
+               laugh_true = sum(HasLaugh == TRUE),
+               laugh_false = sum(HasLaugh == FALSE)
+             ) %>% 
+             ungroup() %>%
+             select(-1)
+          )
+
+# chisq test: job interview
+# p < 0.001 *** number of laughs differs between scenarios
+chisq.test(df_ji_subj %>% 
+             group_by(Condition) %>%
+             summarise(
+               laugh_true = sum(HasLaugh == TRUE),
+               laugh_false = sum(HasLaugh == FALSE)
+             ) %>% 
+             ungroup() %>%
+             select(-1)
+          )
+```
+
+## Laughs per second (lps)
+number of laughs (per ipu) / ipu duration
+
+### Summary
+mean/sd woz > robot (att)
+
+- 68.97% increase in mean for woz compared to robot
+- 29.06% increase in sd for woz compared to robot
+- speakers have higher average lps and greater variability for lps for woz compared to robot
+- woz operator able to elicit greater frequency of laughs
+
+mean/sd woz > robot (ji)
+
+- 382.34% increase in mean for woz compared to robot
+- 115.34% increase in sd for woz compared to robot
+- speakers have higher average lps and greater variability for lps for woz compared to robot
+- woz operator able to elicit greater frequency of laughs
+```{r summary_lps}
+df_att_subj %>%
+  group_by(Condition) %>% 
+  summarise(
+    count = n(),
+    min = min(lps_ipu),
+    max = max(lps_ipu),
+    median = median(lps_ipu),
+    mean = mean(lps_ipu),
+    sd = sd(lps_ipu)
+  ) %>% 
+  ungroup() %>% 
+  mutate(
+   perc_change_mean = calc_perc_inc(mean[2], mean[1]),
+   perc_change_sd = calc_perc_inc(sd[2], sd[1])
+  )
+
+df_ji_subj %>%
+  group_by(Condition) %>% 
+  summarise(
+    count = n(),
+    min = min(lps_ipu),
+    max = max(lps_ipu),
+    median = median(lps_ipu),
+    mean = mean(lps_ipu),
+    sd = sd(lps_ipu)
+  ) %>%
+  ungroup() %>% 
+  mutate(
+    perc_change_mean = calc_perc_inc(mean[2], mean[1]),
+    perc_change_sd = calc_perc_inc(sd[2], sd[1])
+  )
+```
+
+### Assumptions
+Normality and homogeneity of variances assumptions violated
+```{r assumptions_lps, message = FALSE}
+cat("assumptions testing attentive listening\n")
+# normality: violated
+ggplot(df_att_subj, aes(x = lps_ipu)) +
+  geom_histogram(fill = "skyblue", color = "black") +
+  facet_wrap(~ Condition, scales = "free", nrow = 2) +
+  labs(title = "Histogram of Laughs per second (IPU) by Condition for Attentive Listening", x = "Laughs per second (IPU)", y = "Frequency")
+
+# homogeneity of variances: violated
+# H0: variances are equal
+# H1: variances are not equal
+# p-value < 0.05 (variances are significantly different between groups)
+leveneTest(lps_ipu ~ Condition, data = df_att_subj)
+
+cat("assumptions testing job interview\n")
+# normality: violated
+# H0: samples come from a normal distribution
+# H1: samples do not come from a normal distribution
+# p-values < 0.05 (data deviates from normality)
+shapiro.test(df_ji_subj$lps_ipu[df_ji_subj$Condition == "ji_robot"])
+shapiro.test(df_ji_subj$lps_ipu[df_ji_subj$Condition == "ji_woz"])
+
+# normality: violated
+ggplot(df_ji_subj, aes(x = lps_ipu)) +
+  geom_histogram(fill = "skyblue", color = "black") +
+  facet_wrap(~ Condition, scales = "free", nrow = 2) +
+  labs(title = "Histogram of Laughs per second (IPU) by Condition for Job Interview", x = "Laughs per second (IPU)", y = "Frequency")
+
+# homogeneity of variances: violated
+# H0: variances are equal
+# H1: variances are not equal
+# p-value < 0.05 (variances are significantly different between groups)
+leveneTest(lps_ipu ~ Condition, data = df_ji_subj)
+```
+
+### Significance Testing
+- Non-parametric Wilcoxon rank-sum test
+- Significant differences (p < 0.001 ***) between conditions for both attentive listening and job interview data
+```{r significance_lps}
+# Assumptions of normality and homogeneity of variances violated -> non-parametric tests used
+cat("significance testing attentive listening\n")
+
+# Wilcoxon rank-sum/Mann-Whitney U test
+# p < 0.001 ***
+wilcox.test(lps_ipu ~ Condition, data = df_att_subj)
+
+cat("significance testing job interview\n")
+
+# Wilcoxon rank-sum/Mann-Whitney U test
+# p < 0.001 ***
+wilcox.test(lps_ipu ~ Condition, data = df_ji_subj)
+```
