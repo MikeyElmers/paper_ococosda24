@@ -9,6 +9,7 @@ This repository contains the data and code for "Analysis and Detection of Differ
 - [Instructions](#instructions)
 - [Directory information](#directory-information)
     * [data](#data)
+    * [docs](#docs)
     * [output](#output)
     * [scripts](#scripts)
 - [Issues/comments/suggestions](#issuescommentssuggestions)
@@ -24,9 +25,13 @@ This repository contains the data and code for "Analysis and Detection of Differ
 
 ## Directory Information
 ### `data`
-- `cleaned_data.csv`: cleaned data with participant information removed
+- `data.csv`: cleaned data with participant information removed
+
+### `docs`
+- `elmers_ococosda24_poster.pdf`: O-COCOSDA '24 poster submission
 
 ### `output`
+- `plots`: Directory with modeling correlation plots
 - `01_analysis.html`: Output of 01_analysis.Rmd file
 - `02_model_acoustics.html`: Output of 02_model_acoustics.Rmd file
 - `02_model_full.html`: Output of 02_model_full.Rmd file
