@@ -24,7 +24,7 @@ You can view the .html result files in the `output/` directory. If you would lik
    cd paper_ococosda24/
    ```
 2. Open the `paper_ococosda24.Rproj` file.
-3. Open and run the `scripts/renvRestore.R` file or use the following code in the terminal to install project dependencies.
+3. Open and run the `scripts/00_renvRestore.R` file or use the following code in the terminal to install project dependencies.
    ```bash
    Rscript scripts/00_renvRestore.R 
    ```
