@@ -28,7 +28,7 @@ You can view the .html result files in the `output/` directory. If you would lik
    ```bash
    Rscript scripts/00_renvRestore.R 
    ```
-4. Open the individual .`Rmd` files in the scripts directory.
+4. Open the individual .`Rmd` files in the `scripts` directory.
 
 ## Directory Information
 ### `data`
