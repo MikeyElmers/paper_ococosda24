@@ -16,12 +16,19 @@ This repository contains the data and code for "Analysis and Detection of Differ
 - [License](#license)
 
 ## Instructions
+You can view the .html result files in the `output/` directory. If you would like to re-run part or all of the analysis please do the following:
+
 1. Clone repository.
    ```bash
    git clone https://github.com/MikeyElmers/paper_ococosda24.git
    cd paper_ococosda24/
    ```
-2. Rmarkdown documents and the sessionInfo are located in `output/`.
+2. Open the `paper_ococosda24.Rproj` file.
+3. Open and run the `scripts/renvRestore.R` file or use the following code in the terminal to install project dependencies.
+   ```bash
+   Rscript scripts/00_renvRestore.R 
+   ```
+4. Open the individual .`Rmd` files in the scripts directory.
 
 ## Directory Information
 ### `data`
