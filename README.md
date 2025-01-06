@@ -52,6 +52,21 @@ You can view the .html result files in the `output/` directory. If you would lik
 - `02_model_full.Rmd`: Modeling using all features
 - `02_model_linguistics.Rmd`: Modeling using only linguistic features
 
+## Citation
+If you use this data or code for you work, please cite as:
+```bibtex
+@INPROCEEDINGS{elmers_ococosda24,
+  author={Elmers, Mikey and Inoue, Koji and Lala, Divesh and Ochi, Keiko and Kawahara, Tatsuya},
+  booktitle={2024 27th Conference of the Oriental COCOSDA International Committee for the Co-ordination and Standardisation of Speech Databases and Assessment Techniques (O-COCOSDA)}, 
+  title={Analysis and Detection of Differences in Spoken User Behaviors Between Autonomous and Wizard-of-Oz Systems}, 
+  year={2024},
+  volume={},
+  number={},
+  pages={1-6},
+  keywords={Measurement;Analytical models;Accuracy;Autonomous systems;Databases;Human-robot interaction;Predictive models;Speech;Interviews;Robots;spoken dialogue system;human-robot in-teraction;corpus analysis;spoken behaviors},
+  doi={10.1109/O-COCOSDA64382.2024.10799979}}
+```
+
 ## Issues/Comments/Suggestions
 Please use the [issue tracker](https://github.com/MikeyElmers/paper_ococosda24/issues). 
 
